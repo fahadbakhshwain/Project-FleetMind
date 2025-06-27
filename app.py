@@ -1,77 +1,106 @@
-# Import necessary libraries
 import streamlit as st
 import pandas as pd
 import joblib
-import os
+import numpy as np
 
-# --- Page Configuration ---
+# --- تهيئة إعدادات الصفحة ---
 st.set_page_config(
-    page_title="Bike Rental Demand Predictor",
-    page_icon="🚲",
+    page_title="تطبيق توقع الطلب على تأجير السيارات",
+    page_icon="🚗",
     layout="centered"
 )
 
+# --- تحميل النموذج ---
+# هذا النموذج تم تدريبه على بيانات طلب الدراجات، وليس السيارات.
+# التنبؤات ستكون غير دقيقة لهذا السبب.
+try:
+    # تأكد من أن هذا هو مسار واسم ملف موديل توقع الطلب على الدراجات الخاص بك
+    model = joblib.load('models/random_forest_demand_model.joblib')
+except FileNotFoundError:
+    st.error("ملف النموذج (random_forest_demand_model.joblib) غير موجود! يرجى التأكد من وجوده في مجلد 'models'.")
+    st.stop()
 
-# --- Load The Model ---
-# This function will load our trained model
-# @st.cache_data is a decorator that caches the model load, so it doesn't reload every time
-@st.cache_data
-def load_model():
-    model_path = os.path.join('models', 'random_forest_demand_model.joblib')
-    model = joblib.load(model_path)
-    return model
-
-model = load_model()
+# --- تعريف الأعمدة المتوقعة من بيانات التدريب الأصلية (طلب الدراجات) ---
+# هذه الأعمدة هي من موديل تدرب على بيانات طلب الدراجات.
+# ستحتاج لتحديث هذه القائمة بالكامل عند تدريب موديل جديد على بيانات طلب السيارات.
+expected_columns_bike_demand = [
+    'season', 'yr', 'mnth', 'hr', 'holiday', 'weekday', 'workingday',
+    'weathersit', 'temp', 'atemp', 'hum', 'windspeed'
+]
 
 
-# --- App Title and Description ---
-st.title("🚲 Bike Rental Demand Prediction App")
+# --- عنوان التطبيق والوصف ---
+st.title('🚗 تطبيق توقع الطلب على تأجير السيارات')
 st.write(
-    "This app uses a Random Forest model (R² Score: 0.94) to predict the hourly demand for bike rentals. "
-    "Adjust the sliders and inputs below to get a prediction."
+    "يساعد هذا التطبيق شركات تأجير السيارات على التنبؤ بالطلب اليومي/الشهري على تأجير السيارات بناءً على العوامل الرئيسية."
 )
 st.write("---")
 
-
-# --- Create Input Fields in Two Columns ---
-col1, col2 = st.columns(2)
+# --- مدخلات المستخدم (الجديدة لطلب السيارات) ---
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("Time & Season")
-    # Input for Hour (hr)
-    hour = st.slider("Hour of the Day (0-23)", 0, 23, 17) # Default to 5 PM
-    # Input for Year (yr)
-    year = st.selectbox("Year", options=[0, 1], format_func=lambda x: "2011" if x == 0 else "2012")
-    # Input for Month (mnth)
-    month = st.selectbox("Month", options=range(1, 13))
-    # Input for Weekday
-    weekday = st.selectbox("Day of the Week", options=range(0, 7), format_func=lambda x: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][x])
+    st.subheader("معلومات الوقت والموقع")
+    prediction_year = st.selectbox('السنة', list(range(2023, 2028)), index=0)
+    prediction_month = st.selectbox('الشهر', list(range(1, 13)), index=0)
+    prediction_day_of_week = st.selectbox('اليوم من الأسبوع', ['الاحد', 'الاثنين', 'الثلاثاء', 'الاربعاء', 'الخميس', 'الجمعة', 'السبت'])
+    prediction_hour = st.slider('الساعة من اليوم (0-23)', 0, 23, 10)
 
 with col2:
-    st.subheader("Weather & Day Type")
-    # Input for Weather Situation (weathersit)
-    weather = st.selectbox("Weather Situation", options=[1, 2, 3, 4], format_func=lambda x: {1:"Clear", 2:"Mist/Cloudy", 3:"Light Rain/Snow", 4:"Heavy Rain/Snow"}[x])
-    # Input for Temperature (temp) - Normalized value
-    temp = st.slider("Temperature (Normalized)", 0.0, 1.0, 0.66, 0.01)
-    # Input for Humidity (hum) - Normalized value
-    hum = st.slider("Humidity (Normalized)", 0.0, 1.0, 0.60, 0.01)
-    # Input for Holiday
-    holiday = st.radio("Is it a holiday?", (0, 1), format_func=lambda x: "No" if x == 0 else "Yes")
-    # Input for Working Day
-    workingday = st.radio("Is it a working day?", (0, 1), format_func=lambda x: "No" if x == 0 else "Yes")
-    windspeed = 0.19 # Using average windspeed as a constant for simplicity
+    st.subheader("نوع السيارة والعميل")
+    car_type = st.selectbox('نوع السيارة المطلوب', ['اقتصادي', 'سيدان', 'دفع رباعي', 'فان', 'فاخرة'])
+    rental_location = st.selectbox('موقع التأجير', ['المطار', 'وسط المدينة', 'فندق', 'محلّي', 'آخر'])
+    customer_type = st.selectbox('نوع العميل', ['فردي', 'شركات', 'سياح'])
 
-# --- Prediction Logic ---
-if st.button("Predict Demand"):
-    # Create a DataFrame from the user's inputs
-    # The order of columns MUST match the order used for training the model
-    input_data = pd.DataFrame(
-        [[year, month, hour, holiday, weekday, workingday, weather, temp, hum, windspeed]],
-        columns=['yr', 'mnth', 'hr', 'holiday', 'weekday', 'workingday', 'weathersit', 'temp', 'hum', 'windspeed']
-    )
-    
-    # Make a prediction
-    prediction = model.predict(input_data)
-    
-    # Display the prediction
-    st.success(f"Predicted Bike Rentals: **{int(prediction[0])}** rentals")
+with col3:
+    st.subheader("عوامل إضافية")
+    # يمكن هنا إضافة عوامل مثل: هل هو حدث خاص؟ طقس؟ (ستحتاج لبيانات لهذه العوامل)
+    is_holiday = st.radio('هل هو يوم عطلة أو مناسبة خاصة؟', ['نعم', 'لا'])
+    # درجة حرارة وهمية ورطوبة لأن النموذج الحالي يستخدمها
+    # هذه المدخلات لن تكون ذات معنى لطلب السيارات بدون موديل جديد
+    temp_placeholder = st.slider('درجة الحرارة (تقديرية)', 0.0, 1.0, 0.5, help="تقدير للحرارة، سيتم استخدامه في موديل الدراجات القديم.")
+    hum_placeholder = st.slider('الرطوبة (تقديرية)', 0.0, 1.0, 0.5, help="تقدير للرطوبة، سيتم استخدامه في موديل الدراجات القديم.")
+
+
+# --- منطق التنبؤ ---
+if st.button('توقع الطلب', type="primary"):
+    # بناء قاموس من المدخلات الجديدة.
+    # ملاحظة: هذه المدخلات الجديدة سيتم تحويلها قسرياً لتناسب موديل الدراجات القديم،
+    # لذا التنبؤات ستكون غير دقيقة.
+
+    # القيم التي يحتاجها موديل الدراجات (مثال: يرتبط بـ expected_columns_bike_demand)
+    # يجب أن تتطابق هذه الأسماء مع أسماء الأعمدة في بيانات تدريب موديل الدراجات
+    # ويجب أن يتم تحويل القيم من واجهة المستخدم لتناسبها.
+    input_features = {
+        'season': prediction_month, # استخدام الشهر كمؤشر للموسم
+        'yr': prediction_year - 2011, # تحويل السنة لنسبة كما في بيانات الدراجات
+        'mnth': prediction_month,
+        'hr': prediction_hour,
+        'holiday': 1 if is_holiday == 'نعم' else 0,
+        'weekday': ['الاحد', 'الاثنين', 'الثلاثاء', 'الاربعاء', 'الخميس', 'الجمعة', 'السبت'].index(prediction_day_of_week),
+        'workingday': 1 if prediction_day_of_week not in ['الجمعة', 'السبت'] and is_holiday == 'لا' else 0,
+        'weathersit': 1, # قيمة افتراضية للطقس (clear)
+        'temp': temp_placeholder,
+        'atemp': temp_placeholder, # قد يكون نفس temp في هذا السياق
+        'hum': hum_placeholder,
+        'windspeed': 0.2 # قيمة افتراضية
+    }
+
+    # تحويل القاموس إلى DataFrame
+    input_df_for_prediction = pd.DataFrame([input_features])
+
+    # إعادة ترتيب الأعمدة لتطابق ترتيب أعمدة التدريب لموديل الدراجات بالضبط
+    input_df_for_prediction = input_df_for_prediction[expected_columns_bike_demand]
+
+    # إجراء التنبؤ باستخدام النموذج المدرب (موديل الدراجات الحالي)
+    predicted_demand = model.predict(input_df_for_prediction)[0]
+
+    st.write("---")
+    st.subheader("نتيجة التنبؤ بالطلب:")
+
+    st.success(f" العدد المتوقع للسيارات المطلوبة: {int(predicted_demand)} سيارة")
+
+    st.write("---")
+    st.warning("⚠️ ملاحظة هامة جداً: هذا التنبؤ غير دقيق حالياً! الموديل الحالي تم تدريبه على بيانات طلب الدراجات، وليس تأجير السيارات. التنبؤات هي عشوائية وليست ذات صلة.")
+    st.info("الخطوة التالية الحاسمة: تدريب موديل ذكاء اصطناعي جديد على بيانات تاريخية حقيقية لطلب تأجير السيارات، ثم تحديث الكود ليعكس هذا الموديل الجديد.")
+
