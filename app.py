@@ -13,11 +13,12 @@ st.set_page_config(
 # --- تحميل النموذج ---
 # هذا النموذج تم تدريبه على بيانات طلب الدراجات، وليس السيارات.
 # التنبؤات ستكون غير دقيقة لهذا السبب.
-try:
+try: # بداية كتلة try
     # تأكد من أن هذا هو مسار واسم ملف موديل توقع الطلب على الدراجات الخاص بك
-    model = joblib.load('models/random_forest_demand_model.joblib')
-except FileNotFoundError:
-    st.error("ملف النموذج (random_forest_demand_model.joblib) غير موجود! يرجى التأكد من وجوده في مجلد 'models'.")
+    # لاحظ المسافة هنا (indentation)
+    model = joblib.load('notebooks/models/random_forest_demand_model.joblib')
+except FileNotFoundError: # نهاية كتلة try، وبداية كتلة except (نفس مسافة try)
+    st.error("ملف النموذج (random_forest_demand_model.joblib) غير موجود! يرجى التأكد من وجوده في مجلد 'models' داخل 'notebooks'.")
     st.stop()
 
 # --- تعريف الأعمدة المتوقعة من بيانات التدريب الأصلية (طلب الدراجات) ---
